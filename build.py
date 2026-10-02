@@ -55,10 +55,10 @@ PROJECTS = [
 ]
 
 TOOLKIT = [
-    ("Languages", "Python, C, Java, assembly"),
+    ("Programming Languages:", "Java", "Python", "C", "C#", "SQL", "R", "JavaScript", "Assembly", "MATLAB", "HTML/CSS"),
     ("Machine learning", "PyTorch, convolutional neural networks"),
-    ("Data", "PostgreSQL, content-addressed storage"),
-    ("Platforms", "Linux, AWS, .NET"),
+    ("Cloud & Databases:", "AWS", "Azure", "PostgreSQL"),
+    ("Frameworks & Libraries:", "PyTorch", "Flask", "Pandas", "Psycopg", "Pillow", "Azure SDK", ".NET")
 ]
 
 CONTACT_LABEL = "Connect on LinkedIn"
