@@ -12,7 +12,9 @@ Edit the CONTENT section below, then run:
 """
 import base64
 import io
+import json
 import os
+import urllib.request
 from xml.sax.saxutils import escape
 
 from fontTools import subset
@@ -54,11 +56,11 @@ PROJECTS = [
      "An updated version of Stones that adds new mobs and tools."),
 ]
 
+# Each row: a label, then any number of items.
 TOOLKIT = [
     ("Programming Languages:", "Java", "Python", "C", "C#", "SQL", "R", "JavaScript", "Assembly", "MATLAB", "HTML/CSS"),
-    ("Machine learning", "PyTorch, convolutional neural networks"),
-    ("Cloud & Databases:", "AWS", "Azure", "PostgreSQL"),
-    ("Frameworks & Libraries:", "PyTorch", "Flask", "Pandas", "Psycopg", "Pillow", "Azure SDK", ".NET")
+    ("Frameworks & Libraries:", "PyTorch", "Flask", "Pandas", "Psycopg", "Pillow", "Azure SDK", ".NET"),
+    ("Cloud & Databases:", "AWS", "Azure", "PostgreSQL")
 ]
 
 CONTACT_LABEL = "Connect on LinkedIn"
@@ -76,8 +78,16 @@ THEMES = {
                   ink2="#b0aea5", link="#d97757", stock="#e8e6dc",
                   stock_edge="#e8e6dc", printed="#a19e91", hole="#d97757"),
 }
+# Language colours, drawn from Claude's secondary palette. Languages not
+# listed take the next unused swatch so two languages never share a colour.
 LANG_COLOR = {"Python": "#6a9bcc", "C": "#d97757", "Java": "#788c5d",
-              "Assembly": "#b0aea5"}
+              "Assembly": "#b0aea5", "C#": "#c46686", "C++": "#d4a27f",
+              "JavaScript": "#ebdbbc", "TypeScript": "#9c87f5",
+              "HTML": "#e3a68c", "CSS": "#cbcadb", "Shell": "#bcd1ca",
+              "Makefile": "#8b8a83", "Jupyter Notebook": "#d4a27f"}
+SWATCHES = ["#c46686", "#d4a27f", "#bcd1ca", "#cbcadb", "#9c87f5", "#e3a68c"]
+
+LANG_CACHE = os.path.join(HERE, "languages.json")
 BUTTON = dict(fill="#d97757", ink="#141413")
 
 FONTS = {
@@ -270,6 +280,64 @@ def punch_card(svg, t, x0, y0, width):
     return height
 
 
+# -------------------------------------------------------------- LANGUAGES --
+# Byte counts per language come from the GitHub API (the same numbers behind
+# the language bar on each repo page). Results are cached in languages.json,
+# so a build without network access reuses the last good numbers.
+
+def fetch_languages():
+    try:
+        with open(LANG_CACHE, encoding="utf-8") as f:
+            cache = json.load(f)
+    except (OSError, ValueError):
+        cache = {}
+    headers = {"Accept": "application/vnd.github+json",
+               "User-Agent": f"{GITHUB_USER}-profile-build"}
+    if os.environ.get("GITHUB_TOKEN"):
+        headers["Authorization"] = f"Bearer {os.environ['GITHUB_TOKEN']}"
+    fetched = 0
+    for name, _, _ in PROJECTS:
+        url = f"https://api.github.com/repos/{GITHUB_USER}/{name}/languages"
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as r:
+                data = json.load(r)
+            if data:
+                cache[name] = data
+                fetched += 1
+        except Exception as e:  # offline, rate-limited, renamed repo...
+            print(f"  {name}: kept cached languages ({type(e).__name__})")
+    if fetched:
+        with open(LANG_CACHE, "w", encoding="utf-8") as f:
+            json.dump(cache, f, indent=2, sort_keys=True)
+    return cache
+
+
+def top_languages(name, fallback, cache, n=2):
+    """[(language, percent)], largest first. percent is None without data."""
+    data = cache.get(name) or {}
+    total = sum(data.values())
+    if not total:
+        return [(fallback, None)]
+    ranked = sorted(data.items(), key=lambda kv: -kv[1])[:n]
+    return [(lang, size * 100 / total) for lang, size in ranked]
+
+
+def lang_colors(langs):
+    out, used = [], set()
+    for lang in langs:
+        c = LANG_COLOR.get(lang)
+        if not c or c in used:
+            c = next(x for x in SWATCHES + ["#b0aea5"] if x not in used)
+        used.add(c)
+        out.append(c)
+    return out
+
+
+def lang_summary(langs):
+    return ", ".join(l if p is None else f"{l} {p:.1f}%" for l, p in langs)
+
+
 # ----------------------------------------------------------------- PIECES --
 
 def hero(t):
@@ -305,45 +373,88 @@ def heading(t, label):
     return svg
 
 
-def project_cards(t):
+def project_cards(t, cache):
     W_panel, gutter, pad = 476, 12, 26
     W = W_panel + gutter
+    inner = W_panel - 2 * pad
     size, lh = 16, 24
-    texts = [wrap("serif", d, size, W_panel - 2 * pad) for _, _, d in PROJECTS]
+    texts = [wrap("serif", d, size, inner) for _, _, d in PROJECTS]
     most = max(len(x) for x in texts)
     first = 50 + 34
-    foot = first + (most - 1) * lh + 44
+    bar_y = first + (most - 1) * lh + 30
+    foot = bar_y + 30
     H = foot + pad
     out = []
     for i, ((name, lang, desc), lines) in enumerate(zip(PROJECTS, texts)):
-        left = i % 2 == 0
-        x = 0 if left else gutter
-        svg = SVG(W, H, f"{name}: {desc} Written in {lang}.")
+        x = 0 if i % 2 == 0 else gutter
+        langs = top_languages(name, lang, cache)
+        colors = lang_colors([l for l, _ in langs])
+        svg = SVG(W, H, f"{name}: {desc} Languages: {lang_summary(langs)}.")
         panel(svg, t, x, 0, W_panel, H)
         svg.text("monob", x + pad, 50, name, 19, t["link"],
                  extra=' letter-spacing="-.3"')
         for j, ln in enumerate(lines):
             svg.text("serif", x + pad, first + j * lh, ln, size, t["ink"])
-        svg.add(f'<rect x="{x + pad}" y="{foot - 9.5}" width="9" height="9" '
-                f'rx="1" fill="{LANG_COLOR.get(lang, t["ink2"])}"/>')
-        svg.text("mono", x + pad + 17, foot, lang, 13.5, t["ink2"])
+
+        # Language bar: top two languages, the rest of the repo in grey
+        bx = x + pad
+        svg.add(f'<clipPath id="bar"><rect x="{bx}" y="{bar_y}" width="{inner}"'
+                f' height="6" rx="3"/></clipPath>'
+                f'<g clip-path="url(#bar)"><rect x="{bx}" y="{bar_y}" '
+                f'width="{inner}" height="6" fill="{t["stroke"]}"/>')
+        cursor = bx
+        shares = [p if p is not None else 100 / len(langs) for _, p in langs]
+        for share, c in zip(shares, colors):
+            w = inner * share / 100
+            svg.add(f'<rect x="{cursor:.2f}" y="{bar_y}" width="{w:.2f}" '
+                    f'height="6" fill="{c}"/>')
+            cursor += w
+            if cursor < bx + inner - 0.5:
+                svg.add(f'<rect x="{cursor - 1:.2f}" y="{bar_y}" width="2" '
+                        f'height="6" fill="{t["panel"]}"/>')
+        svg.add("</g>")
+
+        lx = bx
+        for (l, p), c in zip(langs, colors):
+            svg.add(f'<rect x="{lx}" y="{foot - 9.5}" width="9" height="9" '
+                    f'rx="1" fill="{c}"/>')
+            svg.text("mono", lx + 16, foot, l, 13.5, t["ink"])
+            lx += 16 + measure("mono", l, 13.5)
+            if p is not None:
+                pct = f"{p:.1f}%"
+                svg.text("mono", lx + 7, foot, pct, 13.5, t["ink2"])
+                lx += 7 + measure("mono", pct, 13.5)
+            lx += 24
         out.append((name, svg))
     return out
 
 
+def toolkit_rows():
+    return [(row[0], ", ".join(row[1:])) for row in TOOLKIT]
+
+
+def toolkit_alt():
+    return "Toolkit. " + " ".join(f"{label.rstrip(':')}: {items}."
+                                  for label, items in toolkit_rows())
+
+
 def toolkit(t):
-    W, pad, row_h = 1000, 44, 54
-    H = 2 * 22 + row_h * len(TOOLKIT)
-    svg = SVG(W, H, "Toolkit. " + " ".join(f"{a}: {b}." for a, b in TOOLKIT))
+    W, pad, items_x, lh, row_pad = 1000, 44, 300, 28, 15
+    rows = [(label, wrap("serif", items, 18, W - pad - items_x))
+            for label, items in toolkit_rows()]
+    H = 2 * 22 + sum(2 * row_pad + len(ls) * lh for _, ls in rows)
+    svg = SVG(W, H, toolkit_alt())
     panel(svg, t, 0, 0, W, H)
-    for i, (label, items) in enumerate(TOOLKIT):
-        y = 22 + i * row_h
+    y = 22
+    for i, (label, lines) in enumerate(rows):
         if i:
             svg.add(f'<line x1="{pad}" y1="{y}" x2="{W - pad}" y2="{y}" '
                     f'stroke="{t["stroke"]}"/>')
-        base = y + row_h / 2 + CAP * 18 / 2
+        base = y + row_pad + lh / 2 + CAP * 18 / 2
         svg.text("serifi", pad, base, label, 17, t["ink2"])
-        svg.text("serif", 300, base, items, 18, t["ink"])
+        for j, ln in enumerate(lines):
+            svg.text("serif", items_x, base + j * lh, ln, 18, t["ink"])
+        y += 2 * row_pad + len(lines) * lh
     return svg
 
 
@@ -365,19 +476,24 @@ def slug(name):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
+    cache = fetch_languages()
+    missing = [n for n, _, _ in PROJECTS if not cache.get(n)]
+    if missing:
+        print("no language data yet for: " + ", ".join(missing)
+              + " (showing the primary language only)")
     for mode, t in THEMES.items():
         pieces = {"hero": hero(t),
                   "heading-projects": heading(t, "Projects"),
                   "heading-toolkit": heading(t, "Toolkit"),
                   "toolkit": toolkit(t),
                   "contact": contact(t)}
-        for name, svg in project_cards(t):
+        for name, svg in project_cards(t, cache):
             pieces["project-" + slug(name)] = svg
         for key, svg in pieces.items():
             path = os.path.join(OUT, f"{key}-{mode}.svg")
             with open(path, "w", encoding="utf-8") as f:
                 f.write(svg.render())
-    write_readme(pieces["contact"].w)
+    write_readme(pieces["contact"].w, cache)
     sizes = sum(os.path.getsize(os.path.join(OUT, f)) for f in os.listdir(OUT))
     print(f"wrote {len(os.listdir(OUT))} files to assets/ ({sizes / 1024:.0f} KB)"
           " and README.md")
@@ -390,7 +506,7 @@ def picture(key, alt, width):
             f'width="{width}" alt="{alt}"></picture>')
 
 
-def write_readme(contact_w):
+def write_readme(contact_w, cache):
     repo = f"https://github.com/{GITHUB_USER}"
     parts = [
         "<!-- Generated by build.py. Edit the CONTENT section there and "
@@ -402,14 +518,15 @@ def write_readme(contact_w):
     for name, lang, desc in PROJECTS:
         cards.append(f'<a href="{repo}/{name}">'
                      + picture("project-" + slug(name),
-                               f"{name}: {desc} Written in {lang}.", "50%")
+                               f"{name}: {desc} Languages: "
+                               f"{lang_summary(top_languages(name, lang, cache))}.",
+                               "50%")
                      + "</a>")
     for i in range(0, len(cards), 2):
         parts.append("<p>" + "".join(cards[i:i + 2]) + "</p>")
     parts += [
         "<p>" + picture("heading-toolkit", "Toolkit", "100%") + "</p>",
-        "<p>" + picture("toolkit", "Toolkit. " + " ".join(
-            f"{a}: {b}." for a, b in TOOLKIT), "100%") + "</p>",
+        "<p>" + picture("toolkit", toolkit_alt(), "100%") + "</p>",
         f'<p><a href="{CONTACT_URL}">'
         + picture("contact", CONTACT_LABEL, f"{contact_w / 10:.1f}%")
         + "</a></p>",
