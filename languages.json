@@ -1,0 +1,29 @@
+{
+  "Dynamic-Memory-Allocator": {
+    "C": 71452,
+    "Makefile": 3017,
+    "Python": 10118
+  },
+  "Huffman-Encoding-System": {
+    "Java": 79638
+  },
+  "Image-Collector": {
+    "Dockerfile": 72,
+    "PLpgSQL": 3121,
+    "Python": 199985
+  },
+  "Miru-Image-Classifier": {
+    "C#": 4810,
+    "Python": 5511
+  },
+  "Stones-v2.0": {
+    "Java": 17787
+  },
+  "chArm-v5-System-Emulator": {
+    "Assembly": 332495,
+    "C": 226907,
+    "Makefile": 3998,
+    "Python": 9084,
+    "Shell": 223
+  }
+}
