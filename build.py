@@ -28,9 +28,9 @@ OUT = os.path.join(HERE, "assets")
 
 NAME = "Stu"
 HANDLE = "@stu-titor"
-BIO = ("A current computer science student at the University of Texas at Austin. "
-       "Work so far encompasses software engineering, data engineering, and machine learning. "
-       "Interested in all facets of computers.")
+BIO = ("Currently a computer science student at the University of Texas at Austin. "
+       "My work spans software, data, and systems engineering, as well as machine learning "
+       "and cloud computing. Interested in all facets of computers.")
 
 # The 80-column card. Columns 1-72 hold the statement, 73-80 the sequence id.
 CARD_STATEMENT = 'PRINT *, "HELLO, I\'M STU. I BUILD THINGS FROM THE BOTTOM UP."'
